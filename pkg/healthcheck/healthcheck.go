@@ -15,7 +15,7 @@ import (
 	"github.com/linkerd/linkerd2/pkg/profiles"
 	"github.com/linkerd/linkerd2/pkg/version"
 	authorizationapi "k8s.io/api/authorization/v1beta1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sVersion "k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
@@ -111,17 +111,19 @@ type CheckResult struct {
 type checkObserver func(*CheckResult)
 
 type Options struct {
-	ControlPlaneNamespace          string
-	DataPlaneNamespace             string
-	KubeConfig                     string
-	KubeContext                    string
-	APIAddr                        string
-	VersionOverride                string
-	RetryDeadline                  time.Time
-	ShouldCheckKubeVersion         bool
-	ShouldCheckControlPlaneVersion bool
-	ShouldCheckDataPlaneVersion    bool
-	SingleNamespace                bool
+	ControlPlaneNamespace                string
+	DataPlaneNamespace                   string
+	KubeConfig                           string
+	KubeContext                          string
+	APIAddr                              string
+	VersionOverride                      string
+	RetryDeadline                        time.Time
+	ShouldCheckKubeVersion               bool
+	ShouldCheckControlPlaneVersion       bool
+	ShouldSelfCheckControlPlane          bool
+	ShouldCheckDataPlaneVersion          bool
+	ShouldCheckControlPlanePodsReadiness bool
+	SingleNamespace                      bool
 }
 
 type HealthChecker struct {
@@ -312,7 +314,10 @@ func (hc *HealthChecker) addLinkerdAPIChecks() {
 			if err != nil {
 				return err
 			}
-			return validateControlPlanePods(hc.controlPlanePods)
+			if hc.ShouldCheckControlPlanePodsReadiness {
+				return validateControlPlanePods(hc.controlPlanePods)
+			}
+			return checkControllerRunning(hc.controlPlanePods)
 		},
 	})
 
@@ -330,17 +335,30 @@ func (hc *HealthChecker) addLinkerdAPIChecks() {
 		},
 	})
 
-	hc.checkers = append(hc.checkers, &checker{
-		category:      LinkerdAPICategory,
-		description:   "can query the control plane API",
-		fatal:         true,
-		retryDeadline: hc.RetryDeadline,
-		checkRPC: func() (*healthcheckPb.SelfCheckResponse, error) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			return hc.apiClient.SelfCheck(ctx, &healthcheckPb.SelfCheckRequest{})
-		},
-	})
+	if hc.ShouldSelfCheckControlPlane {
+		hc.checkers = append(hc.checkers, &checker{
+			category:      LinkerdAPICategory,
+			description:   "can query the control plane API, which itself can call the Kubernetes API and Prometheus",
+			fatal:         true,
+			retryDeadline: hc.RetryDeadline,
+			checkRPC: func() (*healthcheckPb.SelfCheckResponse, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				return hc.apiClient.SelfCheck(ctx, &healthcheckPb.SelfCheckRequest{})
+			},
+		})
+	}
+
+	if hc.ShouldCheckControlPlaneVersion {
+		hc.checkers = append(hc.checkers, &checker{
+			category:    LinkerdVersionCategory,
+			description: "can query the control plane API",
+			warning:     true,
+			check: func() error {
+				return version.CheckServerVersion(hc.apiClient, "")
+			},
+		})
+	}
 
 	if !hc.SingleNamespace {
 		hc.checkers = append(hc.checkers, &checker{
@@ -711,7 +729,7 @@ func (hc *HealthChecker) validateServiceProfiles() error {
 	return nil
 }
 
-func validateControlPlanePods(pods []v1.Pod) error {
+func getPodStatuses(pods []v1.Pod) map[string][]v1.ContainerStatus {
 	statuses := make(map[string][]v1.ContainerStatus)
 
 	for _, pod := range pods {
@@ -724,6 +742,12 @@ func validateControlPlanePods(pods []v1.Pod) error {
 			statuses[name] = append(statuses[name], pod.Status.ContainerStatuses...)
 		}
 	}
+
+	return statuses
+}
+
+func validateControlPlanePods(pods []v1.Pod) error {
+	statuses := getPodStatuses(pods)
 
 	names := []string{"controller", "prometheus", "web", "grafana"}
 	if _, found := statuses["ca"]; found {
@@ -746,6 +770,14 @@ func validateControlPlanePods(pods []v1.Pod) error {
 		}
 	}
 
+	return nil
+}
+
+func checkControllerRunning(pods []v1.Pod) error {
+	statuses := getPodStatuses(pods)
+	if _, ok := statuses["controller"]; !ok {
+		return fmt.Errorf("No running pods for \"linkerd-controller\"")
+	}
 	return nil
 }
 

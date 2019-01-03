@@ -11,6 +11,7 @@ import (
 
 	"github.com/linkerd/linkerd2/controller/api/util"
 	pb "github.com/linkerd/linkerd2/controller/gen/public"
+	"github.com/linkerd/linkerd2/pkg/healthcheck"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 )
@@ -104,7 +105,13 @@ func newCmdTap() *cobra.Command {
 				return fmt.Errorf("output format \"%s\" not recognized", options.output)
 			}
 
-			return requestTapByResourceFromAPI(os.Stdout, validatedPublicAPIClient(time.Time{}), req, wide)
+			client := validatedPublicAPIClient(&healthcheck.Options{
+				RetryDeadline:                        time.Time{},
+				ShouldCheckControlPlaneVersion:       true,
+				ShouldSelfCheckControlPlane:          false,
+				ShouldCheckControlPlanePodsReadiness: false,
+			})
+			return requestTapByResourceFromAPI(os.Stdout, client, req, wide)
 		},
 	}
 

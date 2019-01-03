@@ -89,18 +89,21 @@ func init() {
 // checks to determine if the client can successfully connect to the API. If the
 // checks fail, then CLI will print an error and exit. If the shouldRetry param
 // is specified, then the CLI will print a message to stderr and retry.
-func validatedPublicAPIClient(retryDeadline time.Time) pb.ApiClient {
+func validatedPublicAPIClient(options *healthcheck.Options) pb.ApiClient {
 	checks := []healthcheck.Checks{
 		healthcheck.KubernetesAPIChecks,
 		healthcheck.LinkerdAPIChecks,
 	}
 
 	hc := healthcheck.NewHealthChecker(checks, &healthcheck.Options{
-		ControlPlaneNamespace: controlPlaneNamespace,
-		KubeConfig:            kubeconfigPath,
-		KubeContext:           kubeContext,
-		APIAddr:               apiAddr,
-		RetryDeadline:         retryDeadline,
+		ControlPlaneNamespace:                controlPlaneNamespace,
+		KubeConfig:                           kubeconfigPath,
+		KubeContext:                          kubeContext,
+		APIAddr:                              apiAddr,
+		RetryDeadline:                        options.RetryDeadline,
+		ShouldCheckControlPlaneVersion:       options.ShouldCheckControlPlaneVersion,
+		ShouldSelfCheckControlPlane:          options.ShouldSelfCheckControlPlane,
+		ShouldCheckControlPlanePodsReadiness: options.ShouldCheckControlPlanePodsReadiness,
 	})
 
 	exitOnError := func(result *healthcheck.CheckResult) {

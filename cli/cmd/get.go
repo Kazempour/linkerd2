@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "github.com/linkerd/linkerd2/controller/gen/public"
+	"github.com/linkerd/linkerd2/pkg/healthcheck"
 	"github.com/linkerd/linkerd2/pkg/k8s"
 	"github.com/spf13/cobra"
 )
@@ -56,7 +57,13 @@ Only pod resources (aka pods, po) are supported.`,
 				return fmt.Errorf("invalid resource type %s, valid types: %s", friendlyName, k8s.Pod)
 			}
 
-			podNames, err := getPods(validatedPublicAPIClient(time.Time{}), options)
+			client := validatedPublicAPIClient(&healthcheck.Options{
+				RetryDeadline:                        time.Time{},
+				ShouldCheckControlPlaneVersion:       true,
+				ShouldSelfCheckControlPlane:          false,
+				ShouldCheckControlPlanePodsReadiness: false,
+			})
+			podNames, err := getPods(client, options)
 			if err != nil {
 				return err
 			}

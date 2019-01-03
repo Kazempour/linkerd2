@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/linkerd/linkerd2/pkg/healthcheck"
 	"github.com/linkerd/linkerd2/pkg/k8s"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
@@ -71,7 +72,12 @@ func newCmdDashboard() *cobra.Command {
 			}
 
 			// ensure we can connect to the public API before starting the proxy
-			validatedPublicAPIClient(time.Now().Add(options.wait))
+			validatedPublicAPIClient(&healthcheck.Options{
+				RetryDeadline:                        time.Now().Add(options.wait),
+				ShouldCheckControlPlaneVersion:       false,
+				ShouldSelfCheckControlPlane:          true,
+				ShouldCheckControlPlanePodsReadiness: true,
+			})
 
 			fmt.Printf("Linkerd dashboard available at:\n%s\n", url.String())
 			fmt.Printf("Grafana dashboard available at:\n%s\n", grafanaURL.String())

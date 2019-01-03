@@ -14,6 +14,7 @@ import (
 	"github.com/linkerd/linkerd2/controller/api/util"
 	pb "github.com/linkerd/linkerd2/controller/gen/public"
 	"github.com/linkerd/linkerd2/pkg/addr"
+	"github.com/linkerd/linkerd2/pkg/healthcheck"
 	runewidth "github.com/mattn/go-runewidth"
 	termbox "github.com/nsf/termbox-go"
 	log "github.com/sirupsen/logrus"
@@ -331,7 +332,13 @@ func newCmdTop() *cobra.Command {
 				return err
 			}
 
-			return getTrafficByResourceFromAPI(os.Stdout, validatedPublicAPIClient(time.Time{}), req, table)
+			client := validatedPublicAPIClient(&healthcheck.Options{
+				RetryDeadline:                        time.Time{},
+				ShouldCheckControlPlaneVersion:       true,
+				ShouldSelfCheckControlPlane:          false,
+				ShouldCheckControlPlanePodsReadiness: false,
+			})
+			return getTrafficByResourceFromAPI(os.Stdout, client, req, table)
 		},
 	}
 

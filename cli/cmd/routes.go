@@ -14,6 +14,7 @@ import (
 
 	"github.com/linkerd/linkerd2/controller/api/util"
 	pb "github.com/linkerd/linkerd2/controller/gen/public"
+	"github.com/linkerd/linkerd2/pkg/healthcheck"
 	"github.com/linkerd/linkerd2/pkg/k8s"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -58,7 +59,13 @@ This command will only display traffic which is sent to a service that has a Ser
 				return fmt.Errorf("error creating metrics request while making routes request: %v", err)
 			}
 
-			output, err := requestRouteStatsFromAPI(validatedPublicAPIClient(time.Time{}), req, options)
+			client := validatedPublicAPIClient(&healthcheck.Options{
+				RetryDeadline:                        time.Time{},
+				ShouldCheckControlPlaneVersion:       true,
+				ShouldSelfCheckControlPlane:          false,
+				ShouldCheckControlPlanePodsReadiness: false,
+			})
+			output, err := requestRouteStatsFromAPI(client, req, options)
 			if err != nil {
 				return err
 			}

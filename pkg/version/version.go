@@ -45,6 +45,7 @@ func CheckClientVersion(expectedVersion string) error {
 	return nil
 }
 
+//
 func CheckServerVersion(apiClient pb.ApiClient, expectedVersion string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -52,6 +53,10 @@ func CheckServerVersion(apiClient pb.ApiClient, expectedVersion string) error {
 	rsp, err := apiClient.Version(ctx, &pb.Empty{})
 	if err != nil {
 		return err
+	}
+
+	if expectedVersion == "" {
+		return nil
 	}
 
 	if v := rsp.GetReleaseVersion(); v != expectedVersion {
